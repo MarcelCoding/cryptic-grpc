@@ -1,0 +1,74 @@
+on:
+  push:
+    branches: [ main ]
+    tags: [ "*" ]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        module: [ auth ]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ matrix.module }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.module }}-
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Prepare template
+        run: |
+          mv cryptic-grpc-rust cryptic-grpc-${{ matrix.module }}
+          mv proto/${{ matrix.module }}.proto cryptic-grpc-${{ matrix.module }}/${{ matrix.module }}.proto
+          sed -i "s/cryptic-grpc-rust/cryptic-grpc-${{ matrix.module }}/" Cargo.toml
+          sed -i "s/cryptic-grpc-rust/cryptic-grpc-${{ matrix.module }}/" cryptic-grpc-${{ matrix.module }}/Cargo.toml
+          sed -i "s/rust/${{ matrix.module }}/" cryptic-grpc-${{ matrix.module }}/src/lib.rs
+          sed -i "s/rust/${{ matrix.module }}/" cryptic-grpc-${{ matrix.module }}/build.rs
+
+      - name: Find Version
+        if: startsWith(github.ref, 'refs/tags/')
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: image
+          tags: type=semver,pattern={{version}}
+
+      - name: Set Cargo.toml version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          sed -i "s/0\\.0\\.0-git/${{ steps.meta.outputs.version }}/" cryptic-grpc-${{ matrix.module }}/Cargo.toml
+
+      - name: Build
+        run: cargo build --release -p cryptic-grpc-${{ matrix.module }}
+
+      - name: Package
+        run: cargo build -p cryptic-grpc-${{ matrix.module }}
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: rust-${{ matrix.module }}
+          path: target/package/cryptic-grpc-${{ matrix.module }}-*.crate
+
+      - uses: alexellis/upload-assets@0.3.0
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          asset_paths: '["target/package/cryptic-grpc-${{ matrix.module }}-*.crate"]'

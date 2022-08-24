@@ -1,0 +1,15 @@
+[package]
+name = "cryptic-grpc-rust"
+description = "tonic gRPC definitions for cryptic-user"
+version = "0.0.0-git"
+edition = "2021"
+license = "AGPL-3.0"
+repository = "https://github.com/cryptic-game/cryptic-grpc"
+
+[dependencies]
+tonic = "0.8"
+prost = "0.11"
+
+[build-dependencies]
+tonic-build = "0.8"
+anyhow = "1.0.50"
